@@ -15,7 +15,7 @@ import torch
 
 REF_TEXT = "وَيُمْكِنُ أَنْ تُحْصَدَ الثِّمَارُ عَلَى مَدًى فَتْرَةٍ زَمَنِيَّةٍ طَوِيلَةٍ"
 HARAKAT = "ًٌٍَُِّْ"
-SEEDS = (7, 11, 23, 37)
+SEEDS = tuple(int(x) for x in os.environ.get("SES_TOHUMLAR", "7,11,23,37").split(","))
 
 
 SUKUN = "\u0652"

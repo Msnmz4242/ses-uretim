@@ -32,6 +32,10 @@ def main():
     i = args.parca.split("/")[0]
     os.makedirs("cikti", exist_ok=True)
 
+    # ikinci tur gibi durumlarda farklı denemeler (girdi/tohumlar.txt: "41,53,67,...")
+    if os.path.exists("girdi/tohumlar.txt"):
+        os.environ["SES_TOHUMLAR"] = open("girdi/tohumlar.txt").read().strip()
+
     # 1) metinler
     raw = open(args.girdi, "rb").read()
     open("metinler.json", "wb").write(gzip.decompress(a.decrypt(raw[:12], raw[12:], None)))
