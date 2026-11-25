@@ -210,11 +210,12 @@ def puan(text, kind, heard, ph, wav, sr):
         return 0.0, False, f                                # boş, uğultu ya da fazladan ses eklenmiş
     ceza = (0.3 if f["fazla_son"] else 0) + (0.2 if f["eksik_son"] else 0)
     if kisa_mi(text, kind):
-        ok = f["utam"] and f["csim"] >= 0.6 and not f["fazla_son"] and not f["eksik_son"]
-        return 0.6 * f["usim"] + 0.4 * f["csim"] - ceza, ok, f
+        # ünsüz tanıması kısa seslerde güvenilmez (ث→f, ح kaçar): yalnız sıralamada az ağırlık
+        ok = f["utam"] and not f["fazla_son"] and not f["eksik_son"]
+        return 0.85 * f["usim"] + 0.15 * f["csim"] - ceza, ok, f
     s, ok = score(text, kind, heard, dur)
-    ok = ok and f["usim"] >= 0.7 and f["csim"] >= 0.6 and not f["fazla_son"]
-    return 0.55 * s + 0.3 * f["usim"] + 0.15 * f["csim"] - ceza, ok, f
+    ok = ok and f["usim"] >= 0.7 and not f["fazla_son"]
+    return 0.55 * s + 0.35 * f["usim"] + 0.1 * f["csim"] - ceza, ok, f
 
 
 def score(text, kind, heard, dur):

@@ -50,8 +50,8 @@ def hedef(text):
                 son = "zayif"                                        # tenvin: -n ile biter
             elif not mk2 and (ch in "اىآ" or (ch == "و" and "ُ" in prev) or (ch == "ي" and "ِ" in prev)):
                 son = "unlu"                                         # uzun ünlüyle biter
-            elif ch in WEAK_END:
-                son = "zayif"
+            elif ch in WEAK_END or (ch in "يو" and mk2 in ("", "ْ")):
+                son = "zayif"                                        # hemze/h ya da kayan ي/و (زَايْ، يَوْمْ)
     return out, son
 
 
@@ -109,7 +109,7 @@ HARF_SINIF = {"ب": "b", "ت": "t", "ط": "t", "ث": "θ", "ج": "ʒ", "ح": "ħ
               "ظ": "ð", "ر": "r", "ز": "z", "س": "s", "ص": "s", "ش": "ʃ", "ع": "ʕ", "غ": "ɣ", "ف": "f", "ق": "q",
               "ك": "k", "ل": "l", "م": "m", "ن": "n", "ه": "h", "ة": "h", "و": "w", "ي": "j", "ى": ""}
 FONEM_SINIF = {"b": "b", "p": "b", "t": "t", "θ": "θ", "ʒ": "ʒ", "dʒ": "ʒ", "d͡ʒ": "ʒ", "ɟ": "ʒ", "g": "ʒ", "ħ": "ħ",
-               "x": "x", "χ": "x", "d": "d", "ð": "ð", "r": "r", "ɾ": "r", "z": "z", "s": "s", "ʃ": "ʃ", "ʕ": "ʕ",
+               "x": "x", "χ": "x", "d": "d", "ð": "ð", "r": "r", "ɾ": "r", "ɹ": "r", "z": "z", "s": "s", "ʃ": "ʃ", "ʕ": "ʕ",
                "ɣ": "ɣ", "ʁ": "ɣ", "f": "f", "q": "q", "k": "k", "l": "l", "m": "m", "n": "n", "h": "h", "w": "w",
                "j": "j", "v": "f"}
 
