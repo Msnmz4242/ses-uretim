@@ -5,15 +5,13 @@ on:
   push:
     paths:
       - "girdi/**"
-  schedule:
-    - cron: "*/30 * * * *"
 
 permissions:
   contents: write
 
 concurrency:
   group: uret
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   kontrol:
@@ -76,7 +74,7 @@ jobs:
 
   topla:
     needs: [kontrol, uret]
-    if: always() && needs.kontrol.outputs.calis == '1'
+    if: ${{ !cancelled() && needs.kontrol.outputs.calis == '1' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
