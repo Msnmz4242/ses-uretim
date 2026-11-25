@@ -35,6 +35,8 @@ def main():
     # ikinci tur gibi durumlarda farklı denemeler (girdi/tohumlar.txt: "41,53,67,...")
     if os.path.exists("girdi/tohumlar.txt"):
         os.environ["SES_TOHUMLAR"] = open("girdi/tohumlar.txt").read().strip()
+    if os.path.exists("girdi/hiz.txt"):                       # konuşma hızı (1.0 = örnek ses)
+        os.environ["SES_HIZ"] = open("girdi/hiz.txt").read().strip()
 
     # 1) metinler
     raw = open(args.girdi, "rb").read()

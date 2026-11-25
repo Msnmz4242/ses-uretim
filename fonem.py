@@ -12,7 +12,7 @@ U = set("uʊoɔɵ")           # damma
 LETTER = "ء-ي"
 MARK = "ً-ْٰ"
 VOWEL_OF = {"َ": "a", "ً": "a", "ِ": "i", "ٍ": "i", "ُ": "u", "ٌ": "u", "ٰ": "a"}
-WEAK_END = set("هءأؤئ")     # vakfta sonu zor duyulan ünsüzler: son kontrolü yapılmaz
+WEAK_END = set("هءأؤئع")    # vakfta sonu zor duyulan / ünlü gibi duyulan (ع) ünsüzler: son kontrolü yapılmaz
 
 
 def _units(w):
@@ -48,6 +48,8 @@ def hedef(text):
                 son = "unlu"
             elif mk2 and mk2[-1] in "ًٌٍ":
                 son = "zayif"                                        # tenvin: -n ile biter
+            elif ch == "ا" and "ً" in prev:
+                son = "zayif"                                        # tenvinli elif: -an ile biter (أَهْلًا)
             elif not mk2 and (ch in "اىآ" or (ch == "و" and "ُ" in prev) or (ch == "ي" and "ِ" in prev)):
                 son = "unlu"                                         # uzun ünlüyle biter
             elif ch in WEAK_END or (ch in "يو" and mk2 in ("", "ْ")):
