@@ -58,7 +58,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-v1
+          key: hf-v2
       - name: Uret
         env:
           SES_ANAHTAR: ${{ secrets.SES_ANAHTAR }}

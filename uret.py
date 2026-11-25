@@ -52,6 +52,86 @@ def vakf(text):
     return text
 
 
+MARKS = HARAKAT + "ٰ"
+PUNCT = "،؟!.,:؛?;"
+# seçenek olarak tek başına gösterilen harf → harfin adı (uygulamadaki harf kartıyla aynı)
+HARF_ADI = {
+    "ا": "أَلِف", "ب": "بَاء", "ت": "تَاء", "ث": "ثَاء", "ج": "جِيم", "ح": "حَاء", "خ": "خَاء",
+    "د": "دَال", "ذ": "ذَال", "ر": "رَاء", "ز": "زَاي", "س": "سِين", "ش": "شِين", "ص": "صَاد",
+    "ض": "ضَاد", "ط": "طَاء", "ظ": "ظَاء", "ع": "عَيْن", "غ": "غَيْن", "ف": "فَاء", "ق": "قَاف",
+    "ك": "كَاف", "ل": "لَام", "م": "مِيم", "ن": "نُون", "ه": "هَاء", "و": "وَاو", "ي": "يَاء",
+    "ة": "تَاء مَرْبُوطَة", "ء": "هَمْزَة", "لا": "لَام أَلِف",
+}
+SES_HARF = {"أ": "أَ", "إ": "إِ"}                  # hemzeli elif: sesi okunur
+GOSTERIM = {"بْ": "أَبْ", "بّ": "أَبَّ"}           # sükûn / şedde tek başına okunamaz: ab, abba
+
+
+def son_sukun(w):
+    """Sonu harekesiz kalan ünsüze açıkça sükûn koyar; yoksa model kendi ünlüsünü ekliyor."""
+    if len(w) > 1 and w[-1] == "ّ" and re.match("[ء-ي]", w[-2]):
+        return w + SUKUN                                # فَنّ → فَنّْ (vakf'taki şeddeli sonla aynı)
+    if not w or w[-1] in MARKS or not re.match("[ء-ي]", w[-1]):
+        return w
+    last = w[-1]
+    prev = re.search("[" + MARKS + "]*$", w[:-1]).group(0)
+    if last in "اىآ" or (last == "و" and "ُ" in prev) or (last == "ي" and "ِ" in prev):
+        return w                                        # uzun ünlü
+    if last == "ة":
+        return w[:-1] + "ه" + SUKUN
+    return w + SUKUN
+
+
+def pausa(text):
+    """Duraklamadan önceki her kelimeye vakf, harekesiz kalan son ünsüzlere sükûn."""
+    toks = text.split(" ")
+    out = []
+    for n, tok in enumerate(toks):
+        m = re.match(r"^(.*?)([" + PUNCT + r"]*)$", tok, re.S)
+        w, p = m.group(1), m.group(2)
+        if w and (p or n == len(toks) - 1):
+            w = vakf(w)
+        out.append(son_sukun(w) + p)
+    return " ".join(out)
+
+
+def okunus(text, kind):
+    """Uygulamanın gösterdiği metin → modele okutulan metin."""
+    t = text.replace("‌", "").strip()                 # ZWNJ: yalnız anahtarı ayırmak için
+    if t in GOSTERIM:
+        return GOSTERIM[t]
+    if kind == "secenek" and t in SES_HARF:
+        return SES_HARF[t]
+    if kind == "secenek" and t in HARF_ADI:
+        return pausa(HARF_ADI[t])
+    if kind in ("harf", "hece"):
+        if len(norm(t)) <= 1:
+            return t                                    # بَ بِ بُ بٌ: hareke gösterimi aynen
+        if kind == "harf":
+            return pausa(t)                             # harf adı: بَاءْ، تَاءْ مَرْبُوطَهْ
+        return " ".join(son_sukun(w) for w in t.split(" "))   # hece: son ünlü okunur (جَلَسَ)
+    return pausa(t)
+
+
+TEMPO = float(os.environ.get("SES_HIZ", "1.0"))        # 1.0 = örnek sesteki konuşma hızı
+
+
+def hiz(say, tempo=None):
+    """SILMA'nın kendiliğinden uyguladığı hız çarpanlarını geri alır; konuşma hızı = tempo.
+    (harekeli metin ×1.3 hızlandırılıyor, 25 karakterden kısa metin ÷1.3 yavaşlatılıyor)"""
+    tempo = TEMPO if tempo is None else tempo
+    g = say.strip()
+    marks = len(re.findall("[ً-ْ]", g))
+    factor = 1.3 if (marks >= 3 and marks / len(g) > 0.2) else 1.0
+    b = g if g[-1] in ".,،؟؛:!?;" else g + ". "
+    # çok kısa metne (tek hece) en az ~0,6 sn yer ver; yoksa model konuşma yerine uğultu üretiyor
+    tempo = min(tempo, len(b) * SN_HARF / EN_AZ_SN)
+    return tempo * (1.3 if len(b) < 25 else 1.0) / factor
+
+
+SN_HARF = 6.53 / 80                                     # örnek seste harf başına süre (ref.wav / REF_TEXT + ". ")
+EN_AZ_SN = 0.6
+
+
 _PROGRESS_FD = int(os.environ.get("ILERLEME_FD", "0") or 0)
 
 
@@ -115,14 +195,30 @@ class Judge:
         return self.proc.batch_decode(ids, skip_special_tokens=True)[0].strip()
 
 
-def score(text, kind, heard, dur):
-    """0..1 arası puan ve geçti mi."""
-    short = kind in ("harf", "hece") or len(norm(text)) <= 2
+def kisa_mi(text, kind):
+    return kind in ("harf", "hece") or len(norm(text)) <= 3
+
+
+def puan(text, kind, heard, ph, wav, sr):
+    """İki denetçiyle puan (0..1) ve geçti mi.
+    ph: fonem tanıma (ünlüler, sona eklenen ünlü); heard: harekeli Arapça tanıma (ünsüzler, kelimeler)."""
+    import fonem
+    dur = len(wav) / sr
+    f = fonem.olc(text, ph)
     exp = 0.45 + 0.085 * len(norm(text))
-    if dur < 0.2 or dur > exp * 2.2 + 0.6:
-        return 0.0, False                                   # boş ya da fazladan ses eklenmiş
-    if short:
-        return 0.8, True                                    # hece / harf: tanıma güvenilir değil, süreye bak
+    if dur < 0.2 or dur > exp * 2.2 + 0.6 or not ph or fonem.duz_mu(wav):
+        return 0.0, False, f                                # boş, uğultu ya da fazladan ses eklenmiş
+    ceza = (0.3 if f["fazla_son"] else 0) + (0.2 if f["eksik_son"] else 0)
+    if kisa_mi(text, kind):
+        ok = f["utam"] and f["csim"] >= 0.6 and not f["fazla_son"] and not f["eksik_son"]
+        return 0.6 * f["usim"] + 0.4 * f["csim"] - ceza, ok, f
+    s, ok = score(text, kind, heard, dur)
+    ok = ok and f["usim"] >= 0.7 and f["csim"] >= 0.6 and not f["fazla_son"]
+    return 0.55 * s + 0.3 * f["usim"] + 0.15 * f["csim"] - ceza, ok, f
+
+
+def score(text, kind, heard, dur):
+    """Harekeli tanımaya göre 0..1 arası puan ve geçti mi (uzun metinler)."""
     sim = difflib.SequenceMatcher(None, cons(text), cons(heard)).ratio()
     want, got = last_mark(text), last_mark(heard)
     end_ok = not want or not got or want == got or (want in ("an", "un", "in") and got == want[0])
@@ -153,6 +249,8 @@ def main():
     from silma_tts.api import SilmaTTS
     tts = SilmaTTS(device=device)
     judge = Judge(device)
+    import fonem
+    fon = fonem.Fonem(device)
 
     items = json.load(open(args.metinler, encoding="utf-8"))
     i, n = map(int, args.parca.split("/"))
@@ -170,22 +268,26 @@ def main():
             break
         text, kind = it["t"], it["k"]
         k = key(text)                                      # anahtar: uygulamanın okuttuğu metin
-        say = text if kind in ("harf", "hece") else vakf(text)   # okunan: son kelime vakf ile
+        say = okunus(text, kind)                           # okunan: vakf + açık sükûn
         if k in index and os.path.exists(os.path.join(args.cikti, k + ".ogg")):
             continue
         try:
             best = None
-            for n_try, seed in enumerate(SEEDS, 1):
+            # kısa metinlerde (hece, harf) bütün tohumlar denenebilir; uzunlarda ilk üçü yeter
+            for n_try, seed in enumerate(SEEDS if kisa_mi(say, kind) else SEEDS[:3], 1):
+                # force_tashkeel=False: model harekeleri kendi düzelticisiyle değiştirmesin
                 wav, sr, _ = tts.infer(ref_file=args.ref, ref_text=REF_TEXT, gen_text=say, file_wave=tmp, seed=seed,
-                                       nfe_step=args.nfe, remove_silence=False, show_info=lambda *a, **k: None)
+                                       nfe_step=args.nfe, remove_silence=False, show_info=lambda *a, **k: None,
+                                       speed=hiz(say), force_tashkeel=False)
                 wav = np.asarray(wav, dtype=np.float32)
-                heard = judge.hear(wav, sr) if kind not in ("harf", "hece") else ""
-                s, ok = score(say, kind, heard, len(wav) / sr)
+                heard = judge.hear(wav, sr) if not kisa_mi(say, kind) else ""
+                ph = fon.duy(wav, sr)
+                s, ok, f = puan(say, kind, heard, ph, wav, sr)
                 if best is None or s > best[0]:
-                    best = (s, ok, wav, sr, heard, n_try)
+                    best = (s, ok, wav, sr, heard, n_try, f)
                 if ok:
                     break
-            s, ok, wav, sr, heard, n_try = best
+            s, ok, wav, sr, heard, n_try, f = best
             # baştaki/sondaki sessizliği kırp
             thr = 0.02 * max(1e-6, float(np.abs(wav).max()))
             nz = np.where(np.abs(wav) > thr)[0]
@@ -203,7 +305,8 @@ def main():
             # "audio" modu: konuşma (voip) modu sesin rengini değiştiriyordu
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", tmp, "-ac", "1", "-c:a", "libopus", "-b:a", "40k",
                             "-application", "audio", os.path.join(args.cikti, k + ".ogg")], check=True)
-            index[k] = {"t": text, "v": say, "k": kind, "ok": bool(ok), "s": round(float(s), 3), "n": n_try, "h": heard}
+            index[k] = {"t": text, "v": say, "k": kind, "ok": bool(ok), "s": round(float(s), 3), "n": n_try, "h": heard,
+                        "f": f["fonem"], "u": f["usim"], "c": f["csim"], "fs": f["fazla_son"], "es": f["eksik_son"]}
         except Exception:
             import traceback
             traceback.print_exc()                       # günlüğe gider (şifreli)
