@@ -174,6 +174,41 @@ def unsuz_onay(hedef, duyulan_metin, ph):
     return round(len(ok) / len(t), 3)
 
 
+SON_A = fonem.A
+SON_I = {"i", "ɪ", "y", "ɨ"}
+SON_U = fonem.U
+
+
+def son_unlu_hedef(hedef):
+    """Son harfin açıkça yazılmış kısa ünlüsü ('a' / 'i' / 'u'); tenvin, sükûn ya da harekesiz son: None."""
+    us = re.findall(f"([{LETTER}])([{MARK}]*)", hedef.replace("\u200c", "").strip().rstrip("،؟!.,:؛?"))
+    if not us:
+        return None
+    mk = us[-1][1]
+    for m, v in (("\u064e", "a"), ("\u0650", "i"), ("\u064f", "u")):
+        if m in mk:
+            return v
+    return None
+
+
+def son_unlu_celiskisi(hedef, ph):
+    """Yazılı son ünlü (أَنْتَ / أَنْتِ, كِتَابُكَ / كِتَابُكِ) başka bir ünlü olarak duyulduysa 1."""
+    v = son_unlu_hedef(hedef)
+    if not v or not ph:
+        return 0
+    for p in reversed(ph):
+        b = re.sub("[ːˤ0-9.]", "", p)
+        if not b:
+            continue
+        if b in ("e", "ɛ", "ə"):
+            return 0                                          # belirsiz ünlü: karar verme
+        sinif = "a" if b[:1] in SON_A else "i" if b in SON_I or b[:1] in "iɪ" else "u" if b[:1] in SON_U else None
+        if sinif is None:
+            return 0                                          # ünsüzle bitiyor: eksik_son ayrıca sayılır
+        return int(sinif != v)
+    return 0
+
+
 def iki_kez(wav, sr):
     pad = np.zeros(int(0.6 * sr), np.float32)
     w = np.asarray(wav, dtype=np.float32)
@@ -198,9 +233,11 @@ def puanla(hedef, wav, sr, judge, fon, kind="kelime"):
     hi = harf_ihlali(hedef, ph)
     ae = araya_unlu(hedef, ph)
     uo = unsuz_onay(hedef, duyulan, ph)
+    c += son_unlu_celiskisi(hedef, ph)                       # أَنْتِ 'anta' duyulduysa
+    yazili_son = son_unlu_hedef(hedef) is not None
     bos = (not ph) or fonem.duz_mu(wav)
     gecti = (not bos and c == 0 and hi == 0 and ae == 0 and uo >= 0.6 and not f["fazla_son"]
-             and f["usim"] >= 0.6)
+             and f["usim"] >= 0.6 and not (yazili_son and f["eksik_son"]))
     puan = 0.0 if bos else (1.0 - 0.3 * c - 0.3 * hi - 0.3 * ae - 0.4 * (1 - uo) - 0.3 * f["fazla_son"]
                             - 0.15 * f["eksik_son"] + 0.2 * f["usim"])
     return round(puan, 3), gecti, {"h2": duyulan, "c": c, "hi": hi, "ae": ae, "uo": uo, "f": f["fonem"],

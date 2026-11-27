@@ -31,6 +31,13 @@ def emisyonlar(fon, wav, sr):
     return out
 
 
+def uygun_mu(say):
+    """Taşıyıcı yalnız tek kelimede ve kelime ünsüzle başlıyorsa kullanılır: vasl elifli kelime (ابْنُهْ، اسْمُكْ)
+    cümle içinde baştaki ünlüsünü kaybeder, çok kelimeli metinde kesim yanlış yere düşer."""
+    t = say.replace("\u200c", "").strip()
+    return len(t.split()) == 1 and not t.startswith(("ا", "ٱ"))
+
+
 def ilk_sinif(kelime):
     for ch, mk in re.findall(f"([{fonem.LETTER}])([{fonem.MARK}]*)", kelime):
         c = fonem.HARF_SINIF.get(ch, "")

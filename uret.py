@@ -81,16 +81,43 @@ def son_sukun(w):
     return w + SUKUN
 
 
+ZAMIRLER = {"أَنْتَ", "أَنْتِ", "هُوَ", "هِيَ", "نَحْنُ"}
+EDATLAR = {"إِنَّ", "أَنَّ", "لَكِنَّ", "كَأَنَّ", "لِأَنَّ", "لَعَلَّ", "ثُمَّ"}
+
+
+def korunur(w):
+    """Vakfta da son ünlüsü düşmeyen kelime (kurs/arabic.py ile aynı kural): أَنْتَ/أَنْتِ, حَالُكَ/حَالُكِ, كَتَبْتَ/كَتَبْتِ."""
+    duz = re.sub("[" + MARKS + "]", "", w)
+    belirli = re.match("^[وفبكل]?ال", duz) is not None or duz.startswith("لل")
+    govde = w[1:] if len(w) > 2 and w[0] in "وف" and w[1] == "\u064E" else w
+    govde = govde[1:] if govde[:1] == "\u064E" else govde
+    if w in ZAMIRLER or govde in ZAMIRLER or w in EDATLAR or govde in EDATLAR:
+        return True
+    if belirli:
+        return False
+    return bool(re.search("ك[\u064E\u0650]$", w) or re.search(SUKUN + "ت[\u064E\u064F\u0650]$", w)
+                or re.search(SUKUN + "ن\u064E$", w))
+
+
 def pausa(text):
-    """Duraklamadan önceki her kelimeye vakf, harekesiz kalan son ünsüzlere sükûn."""
+    """Duraklamadan önceki her kelimeye vakf (anlamı taşıyan son ünlü hariç), harekesiz kalan son ünsüzlere sükûn."""
     toks = text.split(" ")
     out = []
     for n, tok in enumerate(toks):
         m = re.match(r"^(.*?)([" + PUNCT + r"]*)$", tok, re.S)
         w, p = m.group(1), m.group(2)
-        if w and (p or n == len(toks) - 1):
+        if w and (p or n == len(toks) - 1) and not korunur(w):
             w = vakf(w)
         out.append(son_sukun(w) + p)
+    return " ".join(out)
+
+
+def yazili(text):
+    """Kelime kartı / seçenek: yazıldığı gibi okunur (vakf yok); yalnız harekesiz son ünsüze sükûn konur."""
+    out = []
+    for tok in text.split(" "):
+        m = re.match(r"^(.*?)([" + PUNCT + r"]*)$", tok, re.S)
+        out.append(son_sukun(m.group(1)) + m.group(2))
     return " ".join(out)
 
 
@@ -112,7 +139,9 @@ def okunus(text, kind):
         if kind == "harf":
             return pausa(t)                             # harf adı: بَاءْ، تَاءْ مَرْبُوطَهْ
         return " ".join(son_sukun(w) for w in t.split(" "))   # hece: son ünlü okunur (جَلَسَ)
-    return pausa(t)
+    if kind == "cumle":
+        return pausa(t)
+    return yazili(t)                                    # kelime, seçenek: أَنْتَ = anta, الْمُعَلِّمَ = al-muʿallima
 
 
 TEMPO = float(os.environ.get("SES_HIZ", "1.0"))        # 1.0 = örnek sesteki konuşma hızı

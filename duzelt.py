@@ -48,7 +48,7 @@ def hileli(say):
 
 def denemeler(say, kind):
     """[(tohum, örnek no, hile mi, tempo)]"""
-    if PLAN == "3":                                    # taşıyıcı cümle: örnekler ve hile sırayla
+    if PLAN == "3" and tasiyici.uygun_mu(say):        # taşıyıcı cümle: örnekler ve hile sırayla
         var = hileli(say) != say
         return [(s, 2 if n % 2 == 0 else 1, var and n % 4 in (0, 3), 1.0) for n, s in enumerate(TOHUMLAR)]
     if PLAN != "2":
@@ -138,7 +138,8 @@ def main():
                     if ref == 2 and not os.path.exists(args.ref2):
                         ref = 1
                     gen = hileli(say) if hile else say
-                    if PLAN == "3":
+                    tasi = PLAN == "3" and tasiyici.uygun_mu(say)
+                    if tasi:
                         gen = f"{tasiyici.TASIYICILAR[0]} {gen}"
                     wav, sr, _ = tts.infer(ref_file=args.ref2 if ref == 2 else args.ref,
                                            ref_text=REF2_TEXT if ref == 2 else uret.REF_TEXT, gen_text=gen, file_wave=tmp,
@@ -146,7 +147,7 @@ def main():
                                            show_info=lambda *a, **kw: None, speed=uret.hiz(gen, tempo),
                                            force_tashkeel=False)
                     wav = np.asarray(wav, dtype=np.float32)
-                    if PLAN == "3":                            # kelimeyi taşıyıcı cümleden kes
+                    if tasi:                                   # kelimeyi taşıyıcı cümleden kes
                         pay = (len(tasiyici.TASIYICILAR[0]) + 1) / (len(gen) + 2)
                         wav = tasiyici.kes(fon, wav, sr, say, pay)
                         if wav is None:
