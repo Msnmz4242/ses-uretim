@@ -37,6 +37,8 @@ def main():
         os.environ["SES_TOHUMLAR"] = open("girdi/tohumlar.txt").read().strip()
     if os.path.exists("girdi/hiz.txt"):                       # konuşma hızı (1.0 = örnek ses)
         os.environ["SES_HIZ"] = open("girdi/hiz.txt").read().strip()
+    if os.path.exists("girdi/plan.txt"):                      # düzeltme turunun deneme planı (1, 2)
+        os.environ["SES_PLAN"] = open("girdi/plan.txt").read().strip()
 
     # 1) metinler
     raw = open(args.girdi, "rb").read()

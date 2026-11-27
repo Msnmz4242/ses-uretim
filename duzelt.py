@@ -15,6 +15,56 @@ import fonem
 import uret
 
 TOHUMLAR = tuple(int(x) for x in os.environ.get("SES_TOHUMLAR", "131,137,139,149,151,157,163,167").split(","))
+PLAN = os.environ.get("SES_PLAN", "1")           # 2: ikinci tur (ج için 'دْج' yazımı, iki hız, daha çok deneme)
+ISARET = "ًٌٍَُِّْٰ"
+KISA_UNLU = "َُِ"
+
+
+def hileli(say):
+    """ج'yi modele 'دْج' diye yazar (c sesi = d + j): yalnız önünde aynı kelimede ünlüyle biten bir harf varsa
+    (تَجْرِبَة → تَدْجْرِبَة, مُتَزَوِّج → مُتَزَوِّدْج). Kelime başında ya da sükûnlu harften sonra araya ünlü girdiği
+    için dokunulmaz. Denetim her zaman asıl metne göre yapılır."""
+    out = []
+    for i, ch in enumerate(say):
+        if ch == "ج":
+            j, kendi = i + 1, ""
+            while j < len(say) and say[j] in ISARET:
+                kendi += say[j]
+                j += 1
+            k, onceki = i - 1, ""
+            while k >= 0 and say[k] in ISARET:
+                onceki = say[k] + onceki
+                k -= 1
+            harf = say[k] if k >= 0 else " "
+            bas = k <= 0 or not ("ء" <= say[k - 1] <= "ي" or say[k - 1] in ISARET)     # kelimenin ilk harfi mi
+            unlu = any(m in KISA_UNLU for m in onceki) or (harf in "اىوي" and "ْ" not in onceki and not bas)
+            if "ّ" not in kendi and "ء" <= harf <= "ي" and unlu:
+                out.append("دْج")
+                continue
+        out.append(ch)
+    return "".join(out)
+
+
+def denemeler(say, kind):
+    """[(tohum, örnek no, hile mi, tempo)]"""
+    if PLAN != "2":
+        cift = any(h in say for h in "جذ")
+        t = TOHUMLAR if kind != "cumle" else TOHUMLAR[:4]
+        return [(s, 2 if (cift and n % 2 == 1) else 1, False, None) for n, s in enumerate(t)]
+    var = hileli(say) != say
+    t = TOHUMLAR if kind != "cumle" else TOHUMLAR[:6]
+    out = []
+    for n, s in enumerate(t):
+        if "ج" in say:
+            ref = 1 if n % 3 == 2 else 2                  # çoğunlukla ikinci örnek (ج'yi c okuyor)
+            hile = var and n % 2 == 0
+        elif "ذ" in say:
+            ref, hile = (2 if n % 2 == 0 else 1), False
+        else:
+            ref, hile = (1 if n % 2 == 0 else 2), False   # ث: ilk örnekte θ var (الثِّمَارُ)
+        tempo = 1.0 if (kind == "cumle" or (n // 2) % 2 == 0) else 0.85   # cümlede hız aynı kalır
+        out.append((s, ref, hile, tempo))
+    return out
 # ikinci örnek: aynı konuşmacı (Arabic Speech Corpus, Nawar Halabi), ج ve ذ'yi fasih okuduğu bir cümle
 REF2_TEXT = "أَتَاحَتْ لِلْبَائِعِ الْمُتَجَوِّلِ أَنْ يَكُونَ جَاذِبًا لِلْمُوَاطِنِ الْأَقَلِّ دَخْلًا"
 
@@ -70,7 +120,7 @@ def main():
         try:
             best = None
             eski = os.path.join(args.mevcut, k + ".ogg")
-            if os.path.exists(eski):
+            if os.path.exists(eski) and not it.get("z"):           # z: okunuşu değişti, eskisi geçersiz
                 w, sr = oku(eski)
                 p, ok, d = denetim.puanla(say, w, sr, judge, fon, kind)
                 best = (p, ok, "eski", None, sr, d, 0)
@@ -80,17 +130,18 @@ def main():
                     U.normalize_last_word = lambda t: t.strip()
                     from silma_tts.api import SilmaTTS
                     tts = SilmaTTS(device=device)
-                cift = any(h in say for h in "جذ") and os.path.exists(args.ref2)
-                tohumlar = TOHUMLAR if kind != "cumle" else TOHUMLAR[:4]
-                for n_try, seed in enumerate(tohumlar, 1):
-                    ikinci = cift and n_try % 2 == 0          # ج/ذ: denemeler iki örnek arasında sırayla
-                    wav, sr, _ = tts.infer(ref_file=args.ref2 if ikinci else args.ref,
-                                           ref_text=REF2_TEXT if ikinci else uret.REF_TEXT, gen_text=say, file_wave=tmp,
+                for n_try, (seed, ref, hile, tempo) in enumerate(denemeler(say, kind), 1):
+                    if ref == 2 and not os.path.exists(args.ref2):
+                        ref = 1
+                    gen = hileli(say) if hile else say
+                    wav, sr, _ = tts.infer(ref_file=args.ref2 if ref == 2 else args.ref,
+                                           ref_text=REF2_TEXT if ref == 2 else uret.REF_TEXT, gen_text=gen, file_wave=tmp,
                                            seed=seed, nfe_step=16, remove_silence=False,
-                                           show_info=lambda *a, **kw: None, speed=uret.hiz(say), force_tashkeel=False)
+                                           show_info=lambda *a, **kw: None, speed=uret.hiz(gen, tempo),
+                                           force_tashkeel=False)
                     wav = np.asarray(wav, dtype=np.float32)
                     p, ok, d = denetim.puanla(say, wav, sr, judge, fon, kind)
-                    d["ref"] = 2 if ikinci else 1
+                    d.update(ref=ref, hile=int(hile), tempo=tempo or uret.TEMPO)
                     if best is None or p > best[0] or (ok and not best[1]):
                         best = (p, ok, "yeni", wav, sr, d, n_try)
                     if ok:
@@ -100,7 +151,8 @@ def main():
             if src == "yeni":
                 yaz(wav, sr, os.path.join(args.cikti, k + ".ogg"), tmp)
                 index[k] = {"t": text, "v": say, "k": kind, "ok": bool(ok), "s": p, "n": n_try, "h": d["h2"],
-                            "f": d["f"], "u": d["u"], "c": d["c"], "hi": d["hi"], "fs": d["fs"], "es": d["es"]}
+                            "f": d["f"], "u": d["u"], "c": d["c"], "hi": d["hi"], "ae": d.get("ae", 0), "fs": d["fs"],
+                            "es": d["es"], "ref": d.get("ref"), "hile": d.get("hile", 0), "tempo": d.get("tempo")}
         except Exception:
             import traceback
             traceback.print_exc()

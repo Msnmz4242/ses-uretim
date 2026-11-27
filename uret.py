@@ -103,6 +103,9 @@ def okunus(text, kind):
         return SES_HARF[t]
     if kind == "secenek" and t in HARF_ADI:
         return pausa(HARF_ADI[t])
+    harfler = t.split()
+    if len(harfler) >= 2 and all(len(norm(h)) == 1 and norm(h) in HARF_ADI for h in harfler):
+        return pausa("، ".join(HARF_ADI[norm(h)] for h in harfler))   # kök: ك ت ب → كَافْ، تَاءْ، بَاءْ
     if kind in ("harf", "hece"):
         if len(norm(t)) <= 1:
             return t                                    # بَ بِ بُ بٌ: hareke gösterimi aynen
