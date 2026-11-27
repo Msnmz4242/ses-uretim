@@ -57,10 +57,21 @@ def main():
     sys.stderr = os.fdopen(2, "w", buffering=1)
     status = 0
     try:
-        import uret
-        sys.argv = ["uret.py", "--metinler", "metinler.json", "--ref", "ref.wav", "--cikti", "ses_out",
-                    "--parca", args.parca, "--sure", args.sure]
-        uret.main()
+        mod = open("girdi/mod.txt").read().strip() if os.path.exists("girdi/mod.txt") else "uret"
+        if mod == "duzelt":
+            # mevcut sesler (şifreli tar) → mevcut/: önce denetlenir, geçemeyenler yeniden üretilir
+            raw = open("girdi/mevcut.enc", "rb").read()
+            with tarfile.open(fileobj=io.BytesIO(a.decrypt(raw[:12], raw[12:], None))) as t:
+                t.extractall("mevcut", filter="data")
+            import duzelt
+            sys.argv = ["duzelt.py", "--metinler", "metinler.json", "--mevcut", "mevcut", "--ref", "ref.wav",
+                        "--cikti", "ses_out", "--parca", args.parca, "--sure", args.sure]
+            duzelt.main()
+        else:
+            import uret
+            sys.argv = ["uret.py", "--metinler", "metinler.json", "--ref", "ref.wav", "--cikti", "ses_out",
+                        "--parca", args.parca, "--sure", args.sure]
+            uret.main()
     except BaseException as e:  # noqa: BLE001
         import traceback
         traceback.print_exc()
